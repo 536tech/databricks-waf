@@ -564,17 +564,19 @@ describe('OE-03-01, service limits and quotas', () => {
     expect(finding.outcome).toBe('partial');
     // The partial reason distinguishes "no events" from "events but not many"
     expect(finding.outcomeReason).toContain('proactive monitoring');
+    expect(finding.outcomeReason).not.toContain('attestation');
   });
 
-  it('reports fail when a significant share of statements hit a capacity limit', () => {
-    // 5% of statements waiting is above the 1% threshold and should fail
+  it('caps at partial when a significant share of statements hit a capacity limit', () => {
     const finding = findingFor(
       'OE-03-01',
       signalsOf([[CAPACITY, capacity({ totalStatements: 10_000, waitingAtCapacity: 500 })]])
     );
-    expect(finding.outcome).toBe('fail');
+    expect(finding.outcome).toBe('partial');
     expect(finding.evidence[0]?.observed).toContain('500');
     expect(finding.evidence[0]?.observed).toContain('10,000');
+    expect(finding.outcomeReason).toContain('regularly');
+    expect(finding.outcomeReason).not.toContain('attestation');
   });
 
   it('reports partial when a small share of statements hit capacity — minor pressure, not a clear failure', () => {
@@ -585,6 +587,7 @@ describe('OE-03-01, service limits and quotas', () => {
     );
     expect(finding.outcome).toBe('partial');
     expect(finding.evidence[0]?.observed).toContain('50');
+    expect(finding.outcomeReason).toContain('occasionally');
   });
 
   it('reports not-applicable when there is no query history to read', () => {
@@ -602,8 +605,7 @@ describe('OE-03-01, service limits and quotas', () => {
       'OE-03-01',
       signalsOf([[CAPACITY, capacity({ totalStatements: 50_000, waitingAtCapacity: 1_000 })]])
     );
-    // 2% exceeds the 1% threshold → fail
-    expect(finding.outcome).toBe('fail');
+    expect(finding.outcome).toBe('partial');
     expect(finding.evidence[0]?.observed).toContain('1,000');
   });
 });
@@ -659,6 +661,7 @@ describe('OE-01-04, standardized MLOps processes', () => {
     expect(finding.outcome).toBe('unmeasurable');
     // The unmeasured kind is unreadable (not attestation): the estate may have ML outside the platform
     expect(finding.unmeasured).toBe('unreadable');
+    expect(finding.outcomeReason).not.toContain('attestation');
   });
 
   it('caps at partial even when both signals are strong — process standardization is beyond telemetry', () => {
@@ -677,6 +680,7 @@ describe('OE-01-04, standardized MLOps processes', () => {
     );
     expect(finding.outcome).toBe('partial');
     expect(finding.outcomeReason).toContain('standardized');
+    expect(finding.outcomeReason).not.toContain('attestation');
   });
 
   it('reports unmeasurable when the serving signal is refused', () => {

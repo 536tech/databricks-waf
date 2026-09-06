@@ -520,7 +520,7 @@ const serviceUsageLimits = fromSignal<QueryCapacity>(CAPACITY, ['OE-03-01'], (ca
       outcomeReason:
         'No capacity-limit delays were recorded in this window, which is the measurable half of this ' +
         'control. Whether proactive monitoring exists — watching headroom before a limit bites — is not ' +
-        'recorded in the workspace and is what the attestation asks about. The absence of events confirms ' +
+        'recorded in the workspace. The absence of events confirms ' +
         'limits are not currently biting; it does not confirm someone is watching them.',
     };
   }
@@ -528,13 +528,10 @@ const serviceUsageLimits = fromSignal<QueryCapacity>(CAPACITY, ['OE-03-01'], (ca
   // At this point we know total > 0 and waiting > 0.
   const waitShare = capacity.waitingAtCapacity / total;
   const { noun: waitNoun } = agreeing(capacity.waitingAtCapacity, 'statement');
-  // Threshold from the catalogue spec; default 1 %: a share above that means limits are regularly
-  // impacting statements rather than occasionally grazing a limit in an otherwise quiet window.
-  const partialThreshold = bandsOf(context.spec, { pass: 0, partial: 0.01 }).partial;
-  const outcome = waitShare >= partialThreshold ? 'fail' : 'partial';
+  const regularPressure = waitShare >= bandsOf(context.spec, { pass: 0, partial: 0.01 }).partial;
 
   return {
-    outcome,
+    outcome: 'partial',
     evidence: [
       evidenceFrom(
         context,
@@ -544,8 +541,9 @@ const serviceUsageLimits = fromSignal<QueryCapacity>(CAPACITY, ['OE-03-01'], (ca
       ),
     ],
     outcomeReason:
-      'Some statements waited at a capacity limit during this window, which means a service quota was ' +
-      'reached. Whether it was noticed and managed proactively is what the attestation asks.',
+      `Statements ${regularPressure ? 'regularly' : 'occasionally'} waited at a capacity limit during ` +
+      'this window, which means a service quota was ' +
+      'reached. The workspace does not record whether it was noticed and managed proactively.',
   };
 });
 
@@ -579,7 +577,7 @@ const mlopsProcesses = fromSignals([SERVING_ENTITIES, RUN_TRACKING], ['OE-01-04'
     return unmeasured(
       'No custom model serving endpoints or job-sourced MLflow runs found in this workspace. ' +
         'That is not evidence of a failed MLOps practice: an estate that serves models from its own service ' +
-        'or trains on a separate platform leaves nothing here. Answer the attestation to record which it is.',
+        'or trains on a separate platform leaves nothing here to measure.',
       'unreadable'
     );
   }
@@ -629,8 +627,8 @@ const mlopsProcesses = fromSignals([SERVING_ENTITIES, RUN_TRACKING], ['OE-01-04'
     outcomeReason:
       'MLOps tooling is in use — model serving and/or experiment tracking are active in this workspace. ' +
         'Whether the process is standardized, documented and enforced — with defined evaluation gates, ' +
-        'a promotion path and review steps — is not recorded in any system table. That is the question ' +
-        'the attestation answers, and this reading provides context for it rather than a verdict.',
+        'a promotion path and review steps — is not recorded in any system table. This reading provides ' +
+        'context for the review rather than a complete verdict.',
   };
 });
 

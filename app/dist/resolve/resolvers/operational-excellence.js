@@ -163,17 +163,18 @@ const OPERATIONAL_EXCELLENCE_RESOLVERS = [
 		if (capacity.waitingAtCapacity === 0) return {
 			outcome: "partial",
 			evidence: [evidenceFrom(context, CAPACITY, `${totalNoun} in the window, none waited at a capacity limit`, "No queries are delayed by a service limit or quota")],
-			outcomeReason: "No capacity-limit delays were recorded in this window, which is the measurable half of this control. Whether proactive monitoring exists — watching headroom before a limit bites — is not recorded in the workspace and is what the attestation asks about. The absence of events confirms limits are not currently biting; it does not confirm someone is watching them."
+			outcomeReason: "No capacity-limit delays were recorded in this window, which is the measurable half of this control. Whether proactive monitoring exists — watching headroom before a limit bites — is not recorded in the workspace. The absence of events confirms limits are not currently biting; it does not confirm someone is watching them."
 		};
 		const waitShare = capacity.waitingAtCapacity / total;
 		const { noun: waitNoun } = agreeing(capacity.waitingAtCapacity, "statement");
+		const regularPressure = waitShare >= bandsOf(context.spec, {
+			pass: 0,
+			partial: .01
+		}).partial;
 		return {
-			outcome: waitShare >= bandsOf(context.spec, {
-				pass: 0,
-				partial: .01
-			}).partial ? "fail" : "partial",
+			outcome: "partial",
 			evidence: [evidenceFrom(context, CAPACITY, `${waitNoun} of ${totalNoun} waited at a capacity limit (${percent(waitShare)})`, "No queries are delayed by a service limit or quota")],
-			outcomeReason: "Some statements waited at a capacity limit during this window, which means a service quota was reached. Whether it was noticed and managed proactively is what the attestation asks."
+			outcomeReason: `Statements ${regularPressure ? "regularly" : "occasionally"} waited at a capacity limit during this window, which means a service quota was reached. The workspace does not record whether it was noticed and managed proactively.`
 		};
 	}),
 	fromSignals([SERVING_ENTITIES, RUN_TRACKING], ["OE-01-04"], (context) => {
@@ -184,7 +185,7 @@ const OPERATIONAL_EXCELLENCE_RESOLVERS = [
 		const customWithVersion = totals?.customModelsWithAVersion ?? 0;
 		const jobRuns = tracking.runsFromAJob;
 		const totalRuns = tracking.runs - tracking.runsWithoutASource;
-		if (customModels === 0 && jobRuns === 0) return unmeasured("No custom model serving endpoints or job-sourced MLflow runs found in this workspace. That is not evidence of a failed MLOps practice: an estate that serves models from its own service or trains on a separate platform leaves nothing here. Answer the attestation to record which it is.", "unreadable");
+		if (customModels === 0 && jobRuns === 0) return unmeasured("No custom model serving endpoints or job-sourced MLflow runs found in this workspace. That is not evidence of a failed MLOps practice: an estate that serves models from its own service or trains on a separate platform leaves nothing here to measure.", "unreadable");
 		const evidences = [];
 		if (customModels > 0) {
 			const { noun: modelNoun } = agreeing(customModels, "custom model");
@@ -198,7 +199,7 @@ const OPERATIONAL_EXCELLENCE_RESOLVERS = [
 		return {
 			outcome: "partial",
 			evidence: evidences,
-			outcomeReason: "MLOps tooling is in use — model serving and/or experiment tracking are active in this workspace. Whether the process is standardized, documented and enforced — with defined evaluation gates, a promotion path and review steps — is not recorded in any system table. That is the question the attestation answers, and this reading provides context for it rather than a verdict."
+			outcomeReason: "MLOps tooling is in use — model serving and/or experiment tracking are active in this workspace. Whether the process is standardized, documented and enforced — with defined evaluation gates, a promotion path and review steps — is not recorded in any system table. This reading provides context for the review rather than a complete verdict."
 		};
 	})
 ];
