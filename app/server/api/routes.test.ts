@@ -2198,7 +2198,7 @@ describe('excluding a requirement the last run did not cover', () => {
     lever,
     reason: 'This estate runs no external sharing, so the requirement is about a thing it does not have.',
     owner: 'platform-engineering',
-    expiresAt: '2026-09-01T00:00:00.000Z',
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   });
 
   async function exclude(url: string, controlId: string, lever?: string) {
