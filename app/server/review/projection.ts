@@ -13,6 +13,7 @@ import { confidenceOf } from '../resolve/confidence.js';
 import type { Finding } from '../resolve/finding.js';
 import { factFromAttestation, findingFromAttestation, type ResolverRegistry } from '../resolve/resolver.js';
 import { scoreFindings, type Score } from '../score/score.js';
+import { METHODOLOGY } from '../scan/identity.js';
 import { aliasLookup, type Scan } from '../scan/scan.js';
 import {
   versionedFinalAssessment,
@@ -72,6 +73,15 @@ export function finalAssessmentProjector(options: {
     if (scoring == null || scoring.trim() === '') {
       throw new FinalAssessmentProjectionError(
         'The reviewed run records no scoring identity, so its final score cannot be reproduced.'
+      );
+    }
+    if (
+      scan.stamp.catalogueVersion !== options.catalogue.version.version ||
+      scan.stamp.catalogueFingerprint !== options.catalogue.version.fingerprint ||
+      scoring !== METHODOLOGY
+    ) {
+      throw new FinalAssessmentProjectionError(
+        'The catalogue or scoring method has changed. Run the assessment again before finalising it.'
       );
     }
     if (result.runId !== scan.id) {

@@ -98,6 +98,7 @@ import { digestOf } from '../import/trust.js';
 import { fromBytes } from '../records/digest.js';
 import { loadCatalogue } from '../catalogue/catalogue.js';
 import { resolveControl, ResolverRegistry } from '../resolve/resolver.js';
+import { METHODOLOGY } from '../scan/identity.js';
 import { scoreFindings } from '../score/score.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
@@ -276,7 +277,7 @@ function projectionScan(
       definition,
       identity: {
         build: { id: '0.1.0+live-projection-test' },
-        methodology: { id: 'sha256:live-scoring' },
+        methodology: { id: METHODOLOGY },
         record: { id: 'codec-4' },
         sources: [],
       },
