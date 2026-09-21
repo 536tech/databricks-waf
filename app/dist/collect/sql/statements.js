@@ -138,8 +138,11 @@ var StatementExecutor = class {
 			}
 			const next = chunk.next_chunk_internal_link;
 			if (next == null) break;
-			chunk = (await this.get(next, signal)).result;
+			chunk = await this.call(next, signal, { method: "GET" });
+			if (!Array.isArray(chunk?.data_array)) throw new StatementFailedError("The warehouse returned a result chunk missing its row data.");
 		}
+		const total = response.manifest?.total_row_count;
+		if (response.manifest?.truncated !== true && typeof total === "number" && rows.length !== total) throw new StatementFailedError("The warehouse result row count does not match its manifest.");
 		return rows;
 	}
 	async submit(statement, parameters, signal) {
