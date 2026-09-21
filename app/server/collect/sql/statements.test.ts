@@ -1,3 +1,4 @@
+/*! Modified by 536 Technologies on 2026-09-20: SQL pagination regression coverage. */
 // What the statement executor has to get right.
 //
 // This code exists because the intended route through AppKit's analytics plugin is
@@ -9,12 +10,7 @@
 import { sql } from '@databricks/appkit';
 import { describe, expect, it, vi } from 'vitest';
 import { classify, isDegradation, RETRYABLE } from '../../scan/errors.js';
-import {
-  StatementDeadlineError,
-  StatementExecutor,
-  StatementFailedError,
-  StatementHttpError,
-} from './statements.js';
+import { StatementDeadlineError, StatementExecutor, StatementFailedError, StatementHttpError } from './statements.js';
 
 const PARAMS = { lookback_days: sql.int(30), workspace_id: sql.string('123') };
 
@@ -187,21 +183,95 @@ describe('reading the result', () => {
     expect(result.columnTypes).toBeUndefined();
   });
 
-  it('follows the chunk links to the end of the result set', async () => {
+  it.each([false, true])('reads three chunks after polling=%s', async (poll) => {
+    const firstLink = '/api/2.0/sql/statements/s-1/result/chunks/1';
+    const secondLink = '/api/2.0/sql/statements/s-1/result/chunks/2?opaque=value';
+    const fetch = vi.fn();
+    if (poll) fetch.mockResolvedValueOnce(json({ statement_id: 's-1', status: { state: 'PENDING' } }));
+    fetch
+      .mockResolvedValueOnce(
+        json({
+          ...succeeded(['a'], [['1']]),
+          manifest: { schema: { columns: [{ name: 'a' }] }, total_row_count: 3 },
+          result: {
+            chunk_index: 0,
+            row_offset: 0,
+            row_count: 1,
+            data_array: [['1']],
+            next_chunk_internal_link: firstLink,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        json({
+          chunk_index: 1,
+          row_offset: 1,
+          row_count: 1,
+          data_array: [[null]],
+          next_chunk_internal_link: secondLink,
+        })
+      )
+      .mockResolvedValueOnce(json({ chunk_index: 2, row_offset: 2, row_count: 1, data_array: [['3']] }));
+
+    const signal = new AbortController().signal;
+    const result = await executor(fetch).query('SELECT 1', {}, signal);
+    expect(result.data).toEqual([{ a: '1' }, { a: null }, { a: '3' }]);
+    expect(result.rowCount).toBe(3);
+    expect(fetch).toHaveBeenCalledTimes(poll ? 4 : 3);
+    for (const [index, link] of [firstLink, secondLink].entries()) {
+      expect(fetch).toHaveBeenNthCalledWith((poll ? 3 : 2) + index, `https://example.cloud.databricks.com${link}`, {
+        method: 'GET',
+        headers: { Authorization: 'Bearer t-1', 'Content-Type': 'application/json' },
+        signal,
+      });
+    }
+  });
+
+  it.each([{}, { result: { data_array: [['2']] } }])('rejects a malformed linked chunk %j', async (chunk) => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
-        json({
-          statement_id: 's-1',
-          status: { state: 'SUCCEEDED' },
-          manifest: { schema: { columns: [{ name: 'a' }] } },
-          result: { data_array: [['1']], next_chunk_internal_link: '/api/2.0/sql/statements/s-1/result/chunks/1' },
-        })
+        json({ ...succeeded(['a'], [['1']]), result: { data_array: [['1']], next_chunk_internal_link: '/chunk/1' } })
       )
-      .mockResolvedValueOnce(json({ result: { data_array: [['2']] } }));
+      .mockResolvedValueOnce(json(chunk));
+    await expect(executor(fetch).query('SELECT 1', {})).rejects.toThrow('missing its row data');
+  });
 
-    const result = await executor(fetch).query('SELECT 1', {});
-    expect(result.data).toEqual([{ a: '1' }, { a: '2' }]);
+  it.each([0, 2])('rejects a complete result with an inconsistent row count of %s', async (total) => {
+    const fetch = vi.fn().mockResolvedValueOnce(
+      json({
+        ...succeeded(['a'], [['1']]),
+        manifest: { total_row_count: total },
+      })
+    );
+    await expect(executor(fetch).query('SELECT 1', {})).rejects.toThrow('row count');
+  });
+
+  it('preserves server truncation for adaptive slicing', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(
+      json({
+        ...succeeded(['a'], [['1']]),
+        manifest: { total_row_count: 2, truncated: true },
+      })
+    );
+    await expect(executor(fetch).query('SELECT 1', {})).resolves.toMatchObject({ truncated: true, rowCount: 2 });
+  });
+
+  it.each(['http', 'network', 'json'])('rejects a later chunk with a %s failure', async (failure) => {
+    const fetch = vi.fn().mockResolvedValueOnce(
+      json({
+        ...succeeded(['a'], [['1']]),
+        result: { data_array: [['1']], next_chunk_internal_link: '/chunk/1' },
+      })
+    );
+    if (failure === 'http')
+      fetch.mockResolvedValueOnce(new Response('throttled', { status: 429, headers: { 'Retry-After': '2' } }));
+    if (failure === 'network') fetch.mockRejectedValueOnce(new Error('network unavailable'));
+    if (failure === 'json') fetch.mockResolvedValueOnce(new Response('invalid json'));
+    const result = executor(fetch).query('SELECT 1', {});
+    if (failure === 'http')
+      await expect(result).rejects.toMatchObject({ name: 'StatementHttpError', status: 429, retryAfterSeconds: 2 });
+    else await expect(result).rejects.toThrow();
   });
 });
 
@@ -226,9 +296,7 @@ describe('a statement the warehouse has not finished', () => {
       return Promise.resolve(json({ statement_id: 's-1', status: { state: 'RUNNING' } }));
     });
 
-    await expect(
-      executor(fetch, 50).query('SELECT 1', {}, controller.signal)
-    ).rejects.toThrow(/cancelled/i);
+    await expect(executor(fetch, 50).query('SELECT 1', {}, controller.signal)).rejects.toThrow(/cancelled/i);
 
     // The point of cancelling: an abandoned scan must not leave work running on a
     // customer's warehouse.
@@ -300,9 +368,9 @@ describe('a statement the warehouse has not finished', () => {
 
 describe('when the request fails', () => {
   it('keeps the status and Retry-After so the scheduler can back off', async () => {
-    const fetch = vi.fn().mockResolvedValue(
-      json({ message: 'Too many requests' }, { status: 429, headers: { 'retry-after': '7' } })
-    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(json({ message: 'Too many requests' }, { status: 429, headers: { 'retry-after': '7' } }));
 
     const failure = await executor(fetch)
       .query('SELECT 1', {})
@@ -335,7 +403,10 @@ describe('when the request fails', () => {
     const fetch = vi.fn().mockResolvedValue(
       json({
         statement_id: 's-1',
-        status: { state: 'FAILED', error: { message: 'Table or view not found', error_code: 'TABLE_OR_VIEW_NOT_FOUND' } },
+        status: {
+          state: 'FAILED',
+          error: { message: 'Table or view not found', error_code: 'TABLE_OR_VIEW_NOT_FOUND' },
+        },
       })
     );
 

@@ -1,3 +1,4 @@
+/*! Modified by 536 Technologies on 2026-09-20: read and validate SQL result chunks. */
 // Running one statement as the signed-in user, against the Statement Execution API.
 //
 // The intended route was AppKit's analytics plugin, whose `asUser(req)` proxy exists
@@ -290,7 +291,16 @@ export class StatementExecutor {
 
       const next = chunk.next_chunk_internal_link;
       if (next == null) break;
-      chunk = (await this.get(next, signal)).result;
+      // Chunk GET responses carry data at the top level; submit/status wrap it in result.
+      chunk = await this.call<Chunk>(next, signal, { method: 'GET' });
+      if (!Array.isArray(chunk?.data_array)) {
+        throw new StatementFailedError('The warehouse returned a result chunk missing its row data.');
+      }
+    }
+    const total = response.manifest?.total_row_count;
+    // Explicit truncation must reach the collector so it can retry smaller slices.
+    if (response.manifest?.truncated !== true && typeof total === 'number' && rows.length !== total) {
+      throw new StatementFailedError('The warehouse result row count does not match its manifest.');
     }
     return rows;
   }
@@ -355,7 +365,11 @@ export class StatementExecutor {
     return this.call(path, signal, { method: 'GET' });
   }
 
-  private async call(path: string, signal: AbortSignal | undefined, init: RequestInit): Promise<StatementResponse> {
+  private async call<T = StatementResponse>(
+    path: string,
+    signal: AbortSignal | undefined,
+    init: RequestInit
+  ): Promise<T> {
     const token = await this.options.token();
     const response = await this.doFetch(`${this.options.host.replace(/\/+$/, '')}${path}`, {
       ...init,
@@ -372,7 +386,7 @@ export class StatementExecutor {
       );
     }
 
-    return (await response.json()) as StatementResponse;
+    return (await response.json()) as T;
   }
 
   /**
