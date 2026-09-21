@@ -1,4 +1,3 @@
-/*! Modified by 536 Technologies on 2026-09-20: read and validate SQL result chunks. */
 // Running one statement as the signed-in user, against the Statement Execution API.
 //
 // The intended route was AppKit's analytics plugin, whose `asUser(req)` proxy exists

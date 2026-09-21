@@ -1,6 +1,5 @@
 import { SELF_TAGS, mark } from "./self.js";
 //#region server/collect/sql/statements.ts
-/*! Modified by 536 Technologies on 2026-09-20: read and validate SQL result chunks. */
 /** A status the API returns while a statement is still going. */
 const PENDING = /* @__PURE__ */ new Set(["PENDING", "RUNNING"]);
 /** Ten minutes. See `deadlineMs` for why this is a preference rather than a reading. */

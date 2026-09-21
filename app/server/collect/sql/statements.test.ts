@@ -1,4 +1,3 @@
-/*! Modified by 536 Technologies on 2026-09-20: SQL pagination regression coverage. */
 // What the statement executor has to get right.
 //
 // This code exists because the intended route through AppKit's analytics plugin is
