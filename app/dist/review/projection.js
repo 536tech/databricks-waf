@@ -2,6 +2,7 @@ import { factFromAttestation, findingFromAttestation } from "../resolve/resolver
 import { counts } from "../attest/attestation.js";
 import { scoreFindings } from "../score/score.js";
 import { digestOf, hexOf } from "../records/digest.js";
+import { METHODOLOGY } from "../scan/identity.js";
 import { selectedPillarsOf } from "./review.js";
 import { confidenceOf } from "../resolve/confidence.js";
 import { aliasLookup } from "../scan/scan.js";
@@ -27,6 +28,7 @@ function finalAssessmentProjector(options) {
 		if (methodology == null) throw new FinalAssessmentProjectionError("The reviewed run predates a public methodology release. Run the assessment again before finalising it.");
 		const scoring = scan.stamp.identity?.methodology.id;
 		if (scoring == null || scoring.trim() === "") throw new FinalAssessmentProjectionError("The reviewed run records no scoring identity, so its final score cannot be reproduced.");
+		if (scan.stamp.catalogueVersion !== options.catalogue.version.version || scan.stamp.catalogueFingerprint !== options.catalogue.version.fingerprint || scoring !== METHODOLOGY) throw new FinalAssessmentProjectionError("The catalogue or scoring method has changed. Run the assessment again before finalising it.");
 		if (result.runId !== scan.id) throw new FinalAssessmentProjectionError("The completed review and the automated run do not name the same run.");
 		if (result.definitionId !== definition.id || result.definitionVersion !== definition.version || result.definitionFingerprint !== definition.fingerprint) throw new FinalAssessmentProjectionError("The completed review does not carry the same assessment definition snapshot as its run.");
 		const cited = unique(result.attestationIds, "The completed review cites one attestation more than once.");

@@ -548,8 +548,7 @@ describe('the final assessment customer boundary', () => {
     );
     expect(exported.score.overall).not.toBe(99);
 
-    let secondFinal: AssessmentReviewPayload = unfinishedReview;
-    for (const pillarId of ALL_PILLARS) {
+    for (const [index, pillarId] of ALL_PILLARS.entries()) {
       const secondFinalResponse = await fetch(
         `${url}/api/reviews/${unfinishedReview.id}/pillars/${pillarId}/skip${scopeQuery}`,
         {
@@ -557,15 +556,16 @@ describe('the final assessment customer boundary', () => {
           headers: { 'content-type': 'application/json', 'x-forwarded-access-token': 'token' },
         }
       );
-      expect(secondFinalResponse.status).toBe(201);
-      secondFinal = (await secondFinalResponse.json()) as AssessmentReviewPayload;
+      if (index < ALL_PILLARS.length - 1) {
+        expect(secondFinalResponse.status).toBe(201);
+      } else {
+        expect(secondFinalResponse.status).toBe(409);
+        expect(await secondFinalResponse.text()).toContain('Run the assessment again before finalising it.');
+      }
     }
-    expect(secondFinal.result?.id).toBeDefined();
-    const changes = (await (
-      await fetch(`${url}/api/results/${secondFinal.result?.id ?? ''}/changes${scopeQuery}`)
-    ).json()) as { comparable: boolean; reason?: string };
-    expect(changes.comparable).toBe(false);
-    expect(changes.reason).toContain('scoring method changed');
+    expect((await reviews.get(unfinishedReview.id))?.result).toBeUndefined();
+    const afterRefusal = (await (await fetch(`${url}/api/results${scopeQuery}`)).json()) as FinalResultHistoryPayload;
+    expect(new Set(afterRefusal.results.map((one) => one.resultId))).toEqual(new Set([resultId]));
   });
 });
 

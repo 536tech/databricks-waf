@@ -6,6 +6,7 @@ import { digestOf } from '../records/digest.js';
 import { resolveControl, ResolverRegistry } from '../resolve/resolver.js';
 import { buildRegistry } from '../resolve/resolvers/index.js';
 import { scoreFindings } from '../score/score.js';
+import { METHODOLOGY } from '../scan/identity.js';
 import { CollectionScheduler } from '../scan/scheduler.js';
 import type { Scan } from '../scan/scan.js';
 import { PostgresScanStore } from '../scan/postgres-store.js';
@@ -63,7 +64,7 @@ function scan(using: Attestation): Scan {
       definition: { id: 'definition-1', version: 3, fingerprint: 'sha256:definition-1' },
       identity: {
         build: { id: '0.1.0+projection-test' },
-        methodology: { id: 'sha256:scoring' },
+        methodology: { id: METHODOLOGY },
         record: { id: 'codec-4' },
         sources: [],
       },
@@ -140,6 +141,34 @@ function result(
 }
 
 describe('the final assessment projection', () => {
+  it.each(['catalogue revision', 'catalogue fingerprint', 'scoring method'])('rejects a different %s', (changed) => {
+    const old = attestation('att-old', 'met');
+    const source = scan(old);
+    const incompatible: Scan = {
+      ...source,
+      stamp: {
+        ...source.stamp,
+        ...(changed === 'catalogue revision' ? { catalogueVersion: 'old-revision' } : {}),
+        ...(changed === 'catalogue fingerprint' ? { catalogueFingerprint: 'sha256:old-catalogue' } : {}),
+        ...(changed === 'scoring method'
+          ? {
+              identity: { ...source.stamp.identity!, methodology: { id: 'sha256:old-scoring' } },
+            }
+          : {}),
+      },
+    };
+
+    expect(() =>
+      projector({
+        result: result([old.id]),
+        scan: incompatible,
+        runDigest: 'sha256:run',
+        answers: [],
+        attestations: [old],
+      })
+    ).toThrow('Run the assessment again before finalising it.');
+  });
+
   it('projects findings, scores and decisions only for the immutable selected pillar set', () => {
     const old = attestation('att-old', 'met');
     const source = scan(old);
